@@ -1,12 +1,12 @@
 [package]
 name = "whois-rust"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Magic Len <len@magiclen.org>"]
 repository = "https://github.com/magiclen/whois-rust"
 homepage = "https://magiclen.org/whois-rust"
 keywords = ["whois"]
 categories = ["web-programming::websocket"]
-description= "A whois client library on Rust, inspired by https://github.com/hjr265/node-whois"
+description= "This is a WHOIS client library for Rust, inspired by https://github.com/hjr265/node-whois"
 readme = "README.md"
 license = "MIT"
 
@@ -20,5 +20,5 @@ regex = "1.0"
 lazy_static = "1.1.0"
 
 [dependencies.validators]
-version = "0.13"
+version = "0.13.4"
 features = ["serdely"]
