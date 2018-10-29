@@ -261,8 +261,10 @@ impl WhoIs {
         let mut new_map: HashMap<String, WhoIsServerValue> = HashMap::with_capacity(map.len());
 
         for (k, v) in map {
-            let server_value = WhoIsServerValue::from_value(&v)?;
-            new_map.insert(k, server_value);
+            if !v.is_null() {
+                let server_value = WhoIsServerValue::from_value(&v)?;
+                new_map.insert(k, server_value);
+            }
         }
 
         Ok(WhoIs {
