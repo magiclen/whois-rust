@@ -43,6 +43,7 @@
 
 pub extern crate serde_json;
 pub extern crate validators;
+pub extern crate idna;
 extern crate regex;
 
 #[macro_use]
@@ -62,6 +63,8 @@ use validators::ipv6::{IPv6Error, IPv6LocalableWithoutPort};
 use validators::host::{Host, HostLocalable};
 
 use regex::Regex;
+
+use idna::domain_to_ascii;
 
 lazy_static! {
     static ref REF_SERVER_RE: Regex = {
@@ -105,6 +108,7 @@ pub struct WhoIsLookupOptions {
 pub struct WhoIsServerValue {
     pub host: HostLocalable,
     pub query: Option<String>,
+    pub punycode: bool,
 }
 
 impl WhoIsServerValue {
@@ -122,14 +126,25 @@ impl WhoIsServerValue {
                                 if let Some(query) = query.as_str() {
                                     Some(query.to_string())
                                 } else {
-                                    return Err(WhoIsError::MapError("The server value is an object, but it has a incorrect query string."));
+                                    return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect query string."));
                                 }
                             }
                             None => None
                         };
+                        let punycode = match obj.get("punycode") {
+                            Some(punycode) => {
+                                if let Some(punycode) = punycode.as_bool() {
+                                    punycode
+                                } else {
+                                    return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect punycode boolean value."));
+                                }
+                            }
+                            None => DEFAULT_PUNYCODE
+                        };
                         Ok(WhoIsServerValue {
                             host,
                             query,
+                            punycode,
                         })
                     } else {
                         Err(WhoIsError::MapError("The server value is an object, but it has not a host string."))
@@ -155,6 +170,7 @@ impl WhoIsServerValue {
         Ok(WhoIsServerValue {
             host,
             query: None,
+            punycode: DEFAULT_PUNYCODE,
         })
     }
 }
@@ -163,6 +179,7 @@ const DEFAULT_FOLLOW: u16 = 2;
 const DEFAULT_TIMEOUT: u64 = 60000;
 const DEFAULT_WHOIS_HOST_PORT: u64 = 43;
 const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
+const DEFAULT_PUNYCODE: bool = true;
 
 impl WhoIsLookupOptions {
     pub fn from_target(target: Target) -> WhoIsLookupOptions {
@@ -379,64 +396,65 @@ impl WhoIs {
 
     /// Lookup a domain or an IP.
     pub fn lookup(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
-        let (server, text) = {
-            match &options.target {
-                Target::IPv4(ipv4) => {
-                    let server = match &options.server {
-                        Some(server) => server,
-                        None => {
-                            &self.ip
-                        }
-                    };
-                    (server, ipv4.get_full_ipv4())
-                }
-                Target::IPv6(ipv6) => {
-                    let server = match &options.server {
-                        Some(server) => server,
-                        None => {
-                            &self.ip
-                        }
-                    };
-                    (server, ipv6.get_full_ipv6())
-                }
-                Target::Domain(domain) => {
-                    let mut tld = domain.get_full_domain();
-                    let server = match &options.server {
-                        Some(server) => server,
-                        None => {
-                            let mut server;
-                            loop {
-                                server = self.map.get(tld);
+        match &options.target {
+            Target::IPv4(ipv4) => {
+                let server = match &options.server {
+                    Some(server) => server,
+                    None => {
+                        &self.ip
+                    }
+                };
+                Self::lookup_inner(server, ipv4.get_full_ipv4(), options.timeout, options.follow)
+            }
+            Target::IPv6(ipv6) => {
+                let server = match &options.server {
+                    Some(server) => server,
+                    None => {
+                        &self.ip
+                    }
+                };
+                Self::lookup_inner(server, ipv6.get_full_ipv6(), options.timeout, options.follow)
+            }
+            Target::Domain(domain) => {
+                let mut tld = domain.get_full_domain();
+                let server = match &options.server {
+                    Some(server) => server,
+                    None => {
+                        let mut server;
+                        loop {
+                            server = self.map.get(tld);
 
-                                if let Some(_) = server {
-                                    break;
+                            if let Some(_) = server {
+                                break;
+                            }
+
+                            if tld.is_empty() {
+                                break;
+                            }
+
+                            match tld.find(".") {
+                                Some(index) => {
+                                    tld = &tld[index + 1..];
                                 }
-
-                                if tld.is_empty() {
-                                    break;
-                                }
-
-                                match tld.find(".") {
-                                    Some(index) => {
-                                        tld = &tld[index + 1..];
-                                    }
-                                    None => {
-                                        tld = "";
-                                    }
+                                None => {
+                                    tld = "";
                                 }
                             }
-                            match server {
-                                Some(server) => server,
-                                None => return Err(WhoIsError::MapError("No whois server is known for this kind of object."))
-                            }
                         }
-                    };
+                        match server {
+                            Some(server) => server,
+                            None => return Err(WhoIsError::MapError("No whois server is known for this kind of object."))
+                        }
+                    }
+                };
 
-                    (server, domain.get_full_domain())
+                if server.punycode {
+                    let punycode_domain = domain_to_ascii(domain.get_full_domain()).unwrap();
+                    Self::lookup_inner(server, &punycode_domain, options.timeout, options.follow)
+                } else {
+                    Self::lookup_inner(server, domain.get_full_domain(), options.timeout, options.follow)
                 }
             }
-        };
-
-        Self::lookup_inner(server, text, options.timeout, options.follow)
+        }
     }
 }
