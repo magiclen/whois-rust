@@ -1,6 +1,6 @@
 [package]
 name = "whois-rust"
-version = "1.1.4"
+version = "1.1.5"
 authors = ["Magic Len <len@magiclen.org>"]
 repository = "https://github.com/magiclen/whois-rust"
 homepage = "https://magiclen.org/whois-rust"
@@ -21,5 +21,5 @@ lazy_static = "1.1.0"
 idna = "0.1.5"
 
 [dependencies.validators]
-version = "0.18"
+version = ">=0.19,<0.20"
 features = ["serdely"]
