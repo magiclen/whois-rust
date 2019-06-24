@@ -234,6 +234,7 @@ impl WhoIsLookupOptions {
 }
 
 /// The `WhoIs` structure stores the list of WHOIS servers in-memory.
+#[derive(Debug)]
 pub struct WhoIs {
     map: HashMap<String, WhoIsServerValue>,
     ip: WhoIsServerValue,
@@ -320,7 +321,7 @@ impl WhoIs {
         };
 
         let mut client = if let Some(timeout) = timeout {
-            let mut socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs().map_err(|err| WhoIsError::IOError(err))?.collect();
+            let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs().map_err(|err| WhoIsError::IOError(err))?.collect();
 
             let mut client = None;
 
@@ -334,7 +335,7 @@ impl WhoIs {
                 }
             }
 
-            let mut client = if let Some(client) = client {
+            let client = if let Some(client) = client {
                 client
             } else {
                 let socket_addr = &socket_addrs[socket_addrs.len() - 1];
