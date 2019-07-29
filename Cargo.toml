@@ -1,6 +1,6 @@
 [package]
 name = "whois-rust"
-version = "1.1.7"
+version = "1.1.8"
 authors = ["Magic Len <len@magiclen.org>"]
 repository = "https://github.com/magiclen/whois-rust"
 homepage = "https://magiclen.org/whois-rust"
@@ -10,9 +10,9 @@ description= "This is a WHOIS client library for Rust, inspired by https://githu
 readme = "README.md"
 license = "MIT"
 
-[badges]
-travis-ci = { repository = "magiclen/whois-rust", branch = "master" }
-appveyor = { repository = "magiclen/whois-rust", branch = "master", service = "github" }
+[badges.travis-ci]
+repository = "magiclen/whois-rust"
+branch = "master"
 
 [dependencies]
 serde_json = "1.0"
