@@ -12,6 +12,7 @@ fn test() {
     let result = who.lookup(WhoIsLookupOptions::from_string("66.42.43.17").unwrap()).unwrap();
     println!("{}", result);
 
-    let result = who.lookup(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap()).unwrap();
+    let result =
+        who.lookup(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap()).unwrap();
     println!("{}", result);
 }
