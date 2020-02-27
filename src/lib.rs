@@ -54,6 +54,8 @@ pub extern crate validators;
 extern crate lazy_static;
 
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::{Display, Error as FmtError, Formatter};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
@@ -86,6 +88,22 @@ pub enum WhoIsError {
     /// This kind of errors is recommended to be panic!
     MapError(&'static str),
 }
+
+impl Display for WhoIsError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            WhoIsError::SerdeJsonError(err) => Display::fmt(err, f),
+            WhoIsError::IOError(err) => Display::fmt(err, f),
+            WhoIsError::DomainError(err) => Display::fmt(err, f),
+            WhoIsError::IPv4Error(err) => Display::fmt(err, f),
+            WhoIsError::IPv6Error(err) => Display::fmt(err, f),
+            WhoIsError::MapError(text) => f.write_str(text),
+        }
+    }
+}
+
+impl Error for WhoIsError {}
 
 impl From<serde_json::Error> for WhoIsError {
     #[inline]
