@@ -1,6 +1,6 @@
 [package]
 name = "whois-rust"
-version = "1.1.10"
+version = "1.1.11"
 authors = ["Magic Len <len@magiclen.org>"]
 edition = "2018"
 repository = "https://github.com/magiclen/whois-rust"
@@ -10,6 +10,7 @@ categories = ["web-programming::websocket"]
 description= "This is a WHOIS client library for Rust, inspired by https://github.com/hjr265/node-whois"
 readme = "README.md"
 license = "MIT"
+include = ["src/**/*", "Cargo.toml"]
 
 [badges.travis-ci]
 repository = "magiclen/whois-rust"
