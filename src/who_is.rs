@@ -3,10 +3,19 @@ extern crate regex;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use std::time::Duration;
+#[cfg(feature = "async")]
+use tokio::net::TcpStream;
+#[cfg(feature = "async")]
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(feature = "async")]
+use tokio::time::timeout;
+#[cfg(not(feature = "async"))]
+use std::net::TcpStream;
+#[cfg(not(feature = "async"))]
+use std::io::{Read, Write};
 
 use crate::serde_json::{self, Map, Value};
 use crate::validators::models::Host;
@@ -96,6 +105,7 @@ impl WhoIs {
     }
 }
 
+#[cfg(not(feature = "async"))]
 impl WhoIs {
     fn lookup_inner(
         server: &WhoIsServerValue,
@@ -222,6 +232,161 @@ impl WhoIs {
                 // punycode check is not necessary because the domain has been ascii-encoded
 
                 Self::lookup_inner(server, domain, options.timeout, options.follow)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+impl WhoIs {
+    async fn lookup_inner_once(
+        server: &WhoIsServerValue,
+        text: &str,
+        request_timeout: Option<Duration>,
+    ) -> Result<(String,String), WhoIsError> {
+        let port = server.host.port.unwrap_or(DEFAULT_WHOIS_HOST_PORT);
+
+        let addr = match &server.host.host {
+            Host::IPv4(ip) => format!("{}:{}", ip, port),
+            Host::IPv6(ip) => format!("[{}]:{}", ip, port),
+            Host::Domain(domain) => format!("{}:{}", domain, port),
+        };
+
+        let mut client = if let Some(request_timeout) = request_timeout {
+            let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs()?.collect();
+
+            let mut client = None;
+
+            for socket_addr in socket_addrs.iter().take(socket_addrs.len() - 1) {
+                
+                if let Ok(ct) = timeout(request_timeout,TcpStream::connect(&socket_addr)).await {
+                    if let Ok(c) = ct {
+                        client = Some(c);
+                        break;
+                    }
+                }
+            }
+
+            let client = if let Some(client) = client {
+                client
+            } else {
+                let socket_addr = &socket_addrs[socket_addrs.len() - 1];
+                TcpStream::connect(&socket_addr).await?
+            };
+            client
+        } else {
+            TcpStream::connect(&addr).await?
+        };
+        let query_future=async {
+            client.write_all((if let Some(query) = &server.query {
+                query.as_str()
+            } else {
+                DEFAULT_WHOIS_HOST_QUERY
+            }).replace("$addr", text).as_bytes()).await?;
+            client.flush().await?;
+            let mut query_result = String::new();
+            client.read_to_string(&mut query_result).await?;
+            Result::<String,WhoIsError>::Ok(query_result)
+        };
+        let query_result = if let Some(request_timeout) = request_timeout {
+            timeout(request_timeout,query_future).await??
+        } else {
+            query_future.await?
+        };
+        Ok((query_result,addr))
+    }
+
+    async fn lookup_inner(
+        server: &WhoIsServerValue,
+        text: &str,
+        timeout: Option<Duration>,
+        mut follow: u16
+    ) -> Result<String, WhoIsError> {
+        let mut query_result = match Self::lookup_inner_once(server, text, timeout).await {
+            Err(e) => return Err(e),
+            Ok(s) => s
+        };
+        while follow>0 {
+            follow-=1;
+            if let Some(c) = RE_SERVER.captures(&query_result.0) {
+                if let Some(h) = c.get(3) {
+                    let h = h.as_str();
+                    if h.ne(&query_result.1) {
+                        if let Ok(server) = WhoIsServerValue::from_string(h) {
+                            query_result=Self::lookup_inner_once(&server, text, timeout).await?;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        return Ok(query_result.0)
+    }
+
+    /// Lookup a domain or an IP.
+    pub async fn lookup(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
+        match &options.target.0 {
+            Host::IPv4(_) | Host::IPv6(_) => {
+                let server = match &options.server {
+                    Some(server) => server,
+                    None => &self.ip,
+                };
+
+                Self::lookup_inner(
+                    server,
+                    options.target.to_uri_authority_string().as_ref(),
+                    options.timeout,
+                    options.follow,
+                ).await
+            }
+            Host::Domain(domain) => {
+                let mut tld = domain.as_str();
+
+                let server = match &options.server {
+                    Some(server) => server,
+                    None => {
+                        let mut server;
+                        loop {
+                            server = self.map.get(tld);
+
+                            if server.is_some() {
+                                break;
+                            }
+
+                            if tld.is_empty() {
+                                break;
+                            }
+
+                            match tld.find('.') {
+                                Some(index) => {
+                                    tld = &tld[index + 1..];
+                                }
+                                None => {
+                                    tld = "";
+                                }
+                            }
+                        }
+                        match server {
+                            Some(server) => server,
+                            None => {
+                                return Err(WhoIsError::MapError(
+                                    "No whois server is known for this kind of object.",
+                                ))
+                            }
+                        }
+                    }
+                };
+
+                // punycode check is not necessary because the domain has been ascii-encoded
+
+                Self::lookup_inner(server, domain, options.timeout, options.follow).await
             }
         }
     }

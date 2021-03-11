@@ -36,6 +36,14 @@ impl From<HostError> for WhoIsError {
     }
 }
 
+#[cfg(feature = "async")]
+impl From<tokio::time::error::Elapsed> for WhoIsError {
+    #[inline]
+    fn from(_error: tokio::time::error::Elapsed) -> Self {
+        WhoIsError::MapError("Timeout")
+    }
+}
+
 impl Display for WhoIsError {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
