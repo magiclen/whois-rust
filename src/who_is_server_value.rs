@@ -18,47 +18,41 @@ impl WhoIsServerValue {
         match value {
             Value::Object(map) => {
                 match map.get("host") {
-                    Some(host) => {
-                        if let Value::String(host) = host {
-                            let host = match WhoIsHost::parse_str(host) {
-                                Ok(host) => host,
-                                Err(_) => return Err(WhoIsError::MapError("The server value is an object, but it has not a correct host string."))
-                            };
+                    Some(Value::String(host)) => {
+                        let host = match WhoIsHost::parse_str(host) {
+                            Ok(host) => host,
+                            Err(_) => return Err(WhoIsError::MapError("The server value is an object, but it has not a correct host string."))
+                        };
 
-                            let query = match map.get("query") {
-                                Some(query) => {
-                                    if let Value::String(query) = query {
-                                        Some(String::from(query))
-                                    } else {
-                                        return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect query string."));
-                                    }
+                        let query = match map.get("query") {
+                            Some(query) => {
+                                if let Value::String(query) = query {
+                                    Some(String::from(query))
+                                } else {
+                                    return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect query string."));
                                 }
-                                None => None,
-                            };
+                            }
+                            None => None,
+                        };
 
-                            let punycode = match map.get("punycode") {
-                                Some(punycode) => {
-                                    if let Value::Bool(punycode) = punycode {
-                                        *punycode
-                                    } else {
-                                        return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect punycode boolean value."));
-                                    }
+                        let punycode = match map.get("punycode") {
+                            Some(punycode) => {
+                                if let Value::Bool(punycode) = punycode {
+                                    *punycode
+                                } else {
+                                    return Err(WhoIsError::MapError("The server value is an object, but it has an incorrect punycode boolean value."));
                                 }
-                                None => DEFAULT_PUNYCODE,
-                            };
+                            }
+                            None => DEFAULT_PUNYCODE,
+                        };
 
-                            Ok(WhoIsServerValue {
-                                host,
-                                query,
-                                punycode,
-                            })
-                        } else {
-                            Err(WhoIsError::MapError(
-                                "The server value is an object, but it has not a host string.",
-                            ))
-                        }
+                        Ok(WhoIsServerValue {
+                            host,
+                            query,
+                            punycode,
+                        })
                     }
-                    None => {
+                    _ => {
                         Err(WhoIsError::MapError(
                             "The server value is an object, but it has not a host string.",
                         ))

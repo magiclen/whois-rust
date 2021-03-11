@@ -31,6 +31,7 @@ impl WhoIsLookupOptions {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn from_str<S: AsRef<str>>(s: S) -> Result<WhoIsLookupOptions, WhoIsError> {
         Ok(Self::from_target(Target::parse_str(s)?))

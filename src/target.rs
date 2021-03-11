@@ -6,6 +6,7 @@ use crate::validators::prelude::*;
 pub struct Target(pub(crate) Host);
 
 impl Target {
+    #[allow(clippy::missing_safety_doc)]
     #[inline]
     pub const unsafe fn from_host_unchecked(host: Host) -> Target {
         Target(host)
