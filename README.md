@@ -1,7 +1,7 @@
 WHOIS Rust
 ====================
 
-[![Build Status](https://travis-ci.org/magiclen/whois-rust.svg?branch=master)](https://travis-ci.org/magiclen/whois-rust)
+[![CI](https://github.com/magiclen/whois-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/magiclen/whois-rust/actions/workflows/ci.yml)
 
 This is a WHOIS client library for Rust, inspired by https://github.com/hjr265/node-whois
 
