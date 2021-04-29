@@ -1,0 +1,3 @@
+[submodule "node-whois"]
+	path = node-whois
+	url = git@github.com:hjr265/node-whois.git
