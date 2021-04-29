@@ -43,6 +43,16 @@ let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
 
 let result: String = whois.lookup(WhoIsLookupOptions::from_string("magiclen.org").unwrap()).unwrap();
 ```
+
+## Testing
+
+```bash
+git clone --recurse-submodules git://github.com/magiclen/whois-rust.git
+
+cd whois-rust
+
+cargo test
+```
 */
 
 #[macro_use]
