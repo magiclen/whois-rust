@@ -46,6 +46,18 @@ let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
 let result: String = whois.lookup(WhoIsLookupOptions::from_string("magiclen.org").unwrap()).unwrap();
 ```
 
+## Asynchronous APIs
+
+You may want to use async APIs with your async runtime. This crate supports `tokio`, currently.
+
+```toml
+[dependencies.whois-rust]
+version = "*"
+features = ["tokio"]
+```
+
+After enabling the async feature, the `from_path_async` function and the `lookup_async` function are available.
+
 ## Testing
 
 ```bash

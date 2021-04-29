@@ -4,6 +4,9 @@ use std::io;
 
 use crate::serde_json;
 
+#[cfg(feature = "tokio")]
+use crate::tokio;
+
 use crate::validators::HostError;
 
 #[derive(Debug)]
@@ -11,6 +14,8 @@ pub enum WhoIsError {
     SerdeJsonError(serde_json::Error),
     IOError(io::Error),
     HostError(HostError),
+    #[cfg(feature = "tokio")]
+    Elapsed(tokio::time::error::Elapsed),
     /// This kind of errors is recommended to be panic!
     MapError(&'static str),
 }
@@ -36,6 +41,14 @@ impl From<HostError> for WhoIsError {
     }
 }
 
+#[cfg(feature = "tokio")]
+impl From<tokio::time::error::Elapsed> for WhoIsError {
+    #[inline]
+    fn from(error: tokio::time::error::Elapsed) -> Self {
+        WhoIsError::Elapsed(error)
+    }
+}
+
 impl Display for WhoIsError {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -43,6 +56,8 @@ impl Display for WhoIsError {
             WhoIsError::SerdeJsonError(error) => Display::fmt(error, f),
             WhoIsError::IOError(error) => Display::fmt(error, f),
             WhoIsError::HostError(error) => Display::fmt(error, f),
+            #[cfg(feature = "tokio")]
+            WhoIsError::Elapsed(error) => Display::fmt(error, f),
             WhoIsError::MapError(text) => f.write_str(text),
         }
     }
