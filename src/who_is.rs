@@ -10,11 +10,6 @@ use std::time::Duration;
 use std::fs::File;
 
 #[cfg(feature = "tokio")]
-use std::future::Future;
-#[cfg(feature = "tokio")]
-use std::pin::Pin;
-
-#[cfg(feature = "tokio")]
 use crate::tokio;
 
 #[cfg(feature = "tokio")]
@@ -93,7 +88,7 @@ impl WhoIs {
                         None => {
                             return Err(WhoIsError::MapError(
                                 "Cannot find `ip` in the `_` object in the server list.",
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -147,12 +142,11 @@ impl WhoIs {
         server
     }
 
-    fn lookup_inner(
+    fn lookup_once(
         server: &WhoIsServerValue,
         text: &str,
         timeout: Option<Duration>,
-        follow: u16,
-    ) -> Result<String, WhoIsError> {
+    ) -> Result<(String, String), WhoIsError> {
         let addr = server.host.to_addr_string(DEFAULT_WHOIS_HOST_PORT);
 
         let mut client = if let Some(timeout) = timeout {
@@ -193,20 +187,37 @@ impl WhoIs {
 
         client.read_to_string(&mut query_result)?;
 
-        if follow > 0 {
-            if let Some(c) = RE_SERVER.captures(&query_result) {
+        Ok((addr, query_result))
+    }
+
+    fn lookup_inner(
+        server: &WhoIsServerValue,
+        text: &str,
+        timeout: Option<Duration>,
+        mut follow: u16,
+    ) -> Result<String, WhoIsError> {
+        let mut query_result = Self::lookup_once(server, text, timeout)?;
+
+        while follow > 0 {
+            if let Some(c) = RE_SERVER.captures(&query_result.1) {
                 if let Some(h) = c.get(3) {
                     let h = h.as_str();
-                    if h.ne(&addr) {
+                    if h.ne(&query_result.0) {
                         if let Ok(server) = WhoIsServerValue::from_string(h) {
-                            return Self::lookup_inner(&server, text, timeout, follow - 1);
+                            query_result = Self::lookup_once(&server, text, timeout)?;
+
+                            follow -= 1;
+
+                            continue;
                         }
                     }
                 }
             }
+
+            break;
         }
 
-        Ok(query_result)
+        Ok(query_result.1)
     }
 
     /// Lookup a domain or an IP.
@@ -234,7 +245,7 @@ impl WhoIs {
                             None => {
                                 return Err(WhoIsError::MapError(
                                     "No whois server is known for this kind of object.",
-                                ))
+                                ));
                             }
                         }
                     }
@@ -250,96 +261,106 @@ impl WhoIs {
 
 #[cfg(feature = "tokio")]
 impl WhoIs {
-    fn lookup_inner_async<'a>(
+    async fn lookup_inner_once_async<'a>(
+        server: &WhoIsServerValue,
+        text: &str,
+        timeout: Option<Duration>,
+    ) -> Result<(String, String), WhoIsError> {
+        let addr = server.host.to_addr_string(DEFAULT_WHOIS_HOST_PORT);
+
+        if let Some(timeout) = timeout {
+            let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs()?.collect();
+
+            let mut client = None;
+
+            for socket_addr in socket_addrs.iter().take(socket_addrs.len() - 1) {
+                if let Ok(c) =
+                    tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&socket_addr))
+                        .await?
+                {
+                    client = Some(c);
+                    break;
+                }
+            }
+
+            let mut client = if let Some(client) = client {
+                client
+            } else {
+                let socket_addr = &socket_addrs[socket_addrs.len() - 1];
+                tokio::time::timeout(timeout, tokio::net::TcpStream::connect(socket_addr)).await??
+            };
+
+            if let Some(query) = &server.query {
+                tokio::time::timeout(
+                    timeout,
+                    client.write_all(query.replace("$addr", text).as_bytes()),
+                )
+                .await??;
+            } else {
+                tokio::time::timeout(
+                    timeout,
+                    client.write_all(DEFAULT_WHOIS_HOST_QUERY.replace("$addr", text).as_bytes()),
+                )
+                .await??;
+            }
+
+            tokio::time::timeout(timeout, client.flush()).await??;
+
+            let mut query_result = String::new();
+
+            tokio::time::timeout(timeout, client.read_to_string(&mut query_result)).await??;
+
+            Ok((addr, query_result))
+        } else {
+            let mut client = tokio::net::TcpStream::connect(&addr).await?;
+
+            if let Some(query) = &server.query {
+                client.write_all(query.replace("$addr", text).as_bytes()).await?;
+            } else {
+                client
+                    .write_all(DEFAULT_WHOIS_HOST_QUERY.replace("$addr", text).as_bytes())
+                    .await?;
+            }
+
+            client.flush().await?;
+
+            let mut query_result = String::new();
+
+            client.read_to_string(&mut query_result).await?;
+
+            Ok((addr, query_result))
+        }
+    }
+
+    async fn lookup_inner_async<'a>(
         server: &'a WhoIsServerValue,
         text: &'a str,
         timeout: Option<Duration>,
-        follow: u16,
-    ) -> Pin<Box<dyn 'a + Future<Output = Result<String, WhoIsError>>>> {
-        Box::pin(async move {
-            let addr = server.host.to_addr_string(DEFAULT_WHOIS_HOST_PORT);
+        mut follow: u16,
+    ) -> Result<String, WhoIsError> {
+        let mut query_result = Self::lookup_inner_once_async(server, text, timeout).await?;
 
-            let query_result = if let Some(timeout) = timeout {
-                let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs()?.collect();
+        while follow > 0 {
+            if let Some(c) = RE_SERVER.captures(&query_result.1) {
+                if let Some(h) = c.get(3) {
+                    let h = h.as_str();
+                    if h.ne(&query_result.0) {
+                        if let Ok(server) = WhoIsServerValue::from_string(h) {
+                            query_result =
+                                Self::lookup_inner_once_async(&server, text, timeout).await?;
 
-                let mut client = None;
+                            follow -= 1;
 
-                for socket_addr in socket_addrs.iter().take(socket_addrs.len() - 1) {
-                    if let Ok(c) =
-                        tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&socket_addr))
-                            .await?
-                    {
-                        client = Some(c);
-                        break;
-                    }
-                }
-
-                let mut client = if let Some(client) = client {
-                    client
-                } else {
-                    let socket_addr = &socket_addrs[socket_addrs.len() - 1];
-                    tokio::time::timeout(timeout, tokio::net::TcpStream::connect(socket_addr))
-                        .await??
-                };
-
-                if let Some(query) = &server.query {
-                    tokio::time::timeout(
-                        timeout,
-                        client.write_all(query.replace("$addr", text).as_bytes()),
-                    )
-                    .await??;
-                } else {
-                    tokio::time::timeout(
-                        timeout,
-                        client
-                            .write_all(DEFAULT_WHOIS_HOST_QUERY.replace("$addr", text).as_bytes()),
-                    )
-                    .await??;
-                }
-
-                tokio::time::timeout(timeout, client.flush()).await??;
-
-                let mut query_result = String::new();
-
-                tokio::time::timeout(timeout, client.read_to_string(&mut query_result)).await??;
-
-                query_result
-            } else {
-                let mut client = tokio::net::TcpStream::connect(&addr).await?;
-
-                if let Some(query) = &server.query {
-                    client.write_all(query.replace("$addr", text).as_bytes()).await?;
-                } else {
-                    client
-                        .write_all(DEFAULT_WHOIS_HOST_QUERY.replace("$addr", text).as_bytes())
-                        .await?;
-                }
-
-                client.flush().await?;
-
-                let mut query_result = String::new();
-
-                client.read_to_string(&mut query_result).await?;
-
-                query_result
-            };
-
-            if follow > 0 {
-                if let Some(c) = RE_SERVER.captures(&query_result) {
-                    if let Some(h) = c.get(3) {
-                        let h = h.as_str();
-                        if h.ne(&addr) {
-                            if let Ok(server) = WhoIsServerValue::from_string(h) {
-                                return Self::lookup_inner_async(&server, text, None, follow - 1)
-                                    .await;
-                            }
+                            continue;
                         }
                     }
                 }
             }
 
-            Ok(query_result)
-        })
+            break;
+        }
+
+        Ok(query_result.1)
     }
 
     /// Lookup a domain or an IP.
@@ -368,7 +389,7 @@ impl WhoIs {
                             None => {
                                 return Err(WhoIsError::MapError(
                                     "No whois server is known for this kind of object.",
-                                ))
+                                ));
                             }
                         }
                     }
