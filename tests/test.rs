@@ -21,7 +21,7 @@ fn test() {
 #[test]
 fn test_srv() {
     let mut who = WhoIs::from_host("whois.arin.net").unwrap();
-    who.can_find_server_for_tld(".lotteryusa.us");
+    who.can_find_server_for_tld(".lotteryusa.us", "8.8.8.8:53");
 
     let result = who.lookup(WhoIsLookupOptions::from_string("lotteryusa.us").unwrap()).unwrap();
     println!("{}", result);

@@ -128,8 +128,8 @@ impl WhoIs {
 }
 
 impl WhoIs {
-    pub fn can_find_server_for_tld(&mut self, mut tld: &str) -> bool {
-        let address = "8.8.8.8:53".parse().unwrap();
+    pub fn can_find_server_for_tld(&mut self, mut tld: &str, dns_server: &str) -> bool {
+        let address = dns_server.parse().unwrap();
         let conn = UdpClientConnection::new(address).unwrap();
         let client = SyncClient::new(conn);
         loop {
