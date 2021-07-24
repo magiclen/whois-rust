@@ -18,6 +18,22 @@ fn test() {
     println!("{}", result);
 }
 
+#[test]
+fn test_srv() {
+    let mut who = WhoIs::from_host("whois.arin.net").unwrap();
+    who.can_find_server_for_tld(".lotteryusa.us");
+
+    let result = who.lookup(WhoIsLookupOptions::from_string("lotteryusa.us").unwrap()).unwrap();
+    println!("{}", result);
+
+    let result = who.lookup(WhoIsLookupOptions::from_string("66.42.43.17").unwrap()).unwrap();
+    println!("{}", result);
+
+    let result =
+        who.lookup(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap()).unwrap();
+    println!("{}", result);
+}
+
 #[cfg(feature = "tokio")]
 #[tokio::test]
 async fn test_async() {
