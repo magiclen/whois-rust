@@ -153,13 +153,11 @@ impl WhoIs {
             let answers: &[Record] = response.answers();
             for record in answers {
                 if let RData::SRV(record) = record.rdata() {
-                    println!("{} {}", record.target(), record.port());
                     let target = record.target().to_string();
                     let new_server = match WhoIsServerValue::from_string(&target[..target.len()-1]) {
                         Ok(new_server) => new_server,
                         Err(_error) => continue,
                     };
-                    println!("Ohhhhh");
                     self.map.insert(tld.to_string(), new_server);
                     return true;
                 }
