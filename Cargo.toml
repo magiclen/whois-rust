@@ -17,6 +17,7 @@ validators = "0.22"
 serde_json = "1"
 once_cell = "1"
 regex = "1"
+trust-dns-client = "0.20.3"
 
 tokio = { version = "1", features = ["fs", "net", "time", "io-util"], optional = true }
 
