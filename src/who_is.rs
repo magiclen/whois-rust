@@ -1,5 +1,6 @@
 extern crate once_cell;
 extern crate regex;
+extern crate trust_dns_client;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -9,11 +10,7 @@ use std::time::Duration;
 
 use std::fs::File;
 
-use trust_dns_client::client::{Client, SyncClient};
-use trust_dns_client::udp::UdpClientConnection;
 use std::str::FromStr;
-use trust_dns_client::op::DnsResponse;
-use trust_dns_client::rr::{DNSClass, Name, RData, Record, RecordType};
 
 #[cfg(feature = "tokio")]
 use crate::tokio;
@@ -28,6 +25,11 @@ use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+
+use trust_dns_client::client::{Client, SyncClient};
+use trust_dns_client::op::DnsResponse;
+use trust_dns_client::rr::{DNSClass, Name, RData, Record, RecordType};
+use trust_dns_client::udp::UdpClientConnection;
 
 const DEFAULT_WHOIS_HOST_PORT: u16 = 43;
 const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
@@ -44,7 +46,8 @@ pub struct WhoIs {
 }
 
 impl WhoIs {
-    pub fn from_host<T: AsRef<str>>(host: T) -> Result<WhoIs, WhoIsError>{
+    /// Create a `WhoIs` instance which doesn't have a WHOIS server list. You should provide the host that is used for query ip. You may want to use the host `"whois.arin.net"`.
+    pub fn from_host<T: AsRef<str>>(host: T) -> Result<WhoIs, WhoIsError> {
         Ok(Self {
             map: HashMap::new(),
             ip: WhoIsServerValue::from_string(host)?,
@@ -128,14 +131,23 @@ impl WhoIs {
 }
 
 impl WhoIs {
-    pub fn can_find_server_for_tld(&mut self, mut tld: &str, dns_server: &str) -> bool {
+    pub fn can_find_server_for_tld<T: AsRef<str>, D: AsRef<str>>(
+        &mut self,
+        tld: T,
+        dns_server: D,
+    ) -> bool {
+        let mut tld = tld.as_ref();
+        let dns_server = dns_server.as_ref();
+
         let address = dns_server.parse().unwrap();
         let conn = UdpClientConnection::new(address).unwrap();
         let client = SyncClient::new(conn);
+
         loop {
             if self.map.contains_key(tld) {
                 break;
             }
+
             match tld.find('.') {
                 Some(index) => {
                     tld = &tld[index + 1..];
@@ -144,26 +156,32 @@ impl WhoIs {
                     tld = "";
                 }
             }
+
             if tld.is_empty() {
                 break;
             }
-            println!("TLD: {}", tld);
+
             let name = Name::from_str(&format!("_nicname._tcp.{}.", tld)).unwrap();
             let response: DnsResponse = client.query(&name, DNSClass::IN, RecordType::SRV).unwrap();
             let answers: &[Record] = response.answers();
+
             for record in answers {
                 if let RData::SRV(record) = record.rdata() {
                     let target = record.target().to_string();
-                    let new_server = match WhoIsServerValue::from_string(&target[..target.len()-1]) {
-                        Ok(new_server) => new_server,
-                        Err(_error) => continue,
-                    };
+                    let new_server =
+                        match WhoIsServerValue::from_string(&target[..target.len() - 1]) {
+                            Ok(new_server) => new_server,
+                            Err(_error) => continue,
+                        };
+
                     self.map.insert(tld.to_string(), new_server);
+
                     return true;
                 }
             }
         }
-        return false;
+
+        false
     }
 
     fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
@@ -206,7 +224,7 @@ impl WhoIs {
             let mut client = None;
 
             for socket_addr in socket_addrs.iter().take(socket_addrs.len() - 1) {
-                if let Ok(c) = TcpStream::connect_timeout(&socket_addr, timeout) {
+                if let Ok(c) = TcpStream::connect_timeout(socket_addr, timeout) {
                     client = Some(c);
                     break;
                 }
@@ -216,7 +234,7 @@ impl WhoIs {
                 client
             } else {
                 let socket_addr = &socket_addrs[socket_addrs.len() - 1];
-                TcpStream::connect_timeout(&socket_addr, timeout)?
+                TcpStream::connect_timeout(socket_addr, timeout)?
             };
 
             client.set_read_timeout(Some(timeout))?;

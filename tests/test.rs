@@ -10,27 +10,17 @@ fn test() {
     let result = who.lookup(WhoIsLookupOptions::from_string("magiclen.org").unwrap()).unwrap();
     println!("{}", result);
 
-    let result = who.lookup(WhoIsLookupOptions::from_string("66.42.43.17").unwrap()).unwrap();
-    println!("{}", result);
-
-    let result =
-        who.lookup(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap()).unwrap();
+    let result = who.lookup(WhoIsLookupOptions::from_string("172.105.210.153").unwrap()).unwrap();
     println!("{}", result);
 }
 
 #[test]
 fn test_srv() {
     let mut who = WhoIs::from_host("whois.arin.net").unwrap();
-    who.can_find_server_for_tld(".lotteryusa.us", "8.8.8.8:53");
+
+    assert!(who.can_find_server_for_tld(".lotteryusa.us", "8.8.8.8:53"));
 
     let result = who.lookup(WhoIsLookupOptions::from_string("lotteryusa.us").unwrap()).unwrap();
-    println!("{}", result);
-
-    let result = who.lookup(WhoIsLookupOptions::from_string("66.42.43.17").unwrap()).unwrap();
-    println!("{}", result);
-
-    let result =
-        who.lookup(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap()).unwrap();
     println!("{}", result);
 }
 
@@ -43,12 +33,8 @@ async fn test_async() {
         who.lookup_async(WhoIsLookupOptions::from_string("magiclen.org").unwrap()).await.unwrap();
     println!("{}", result);
 
-    let result =
-        who.lookup_async(WhoIsLookupOptions::from_string("66.42.43.17").unwrap()).await.unwrap();
-    println!("{}", result);
-
     let result = who
-        .lookup_async(WhoIsLookupOptions::from_string("fe80::5400:1ff:feaf:b71").unwrap())
+        .lookup_async(WhoIsLookupOptions::from_string("172.105.210.153").unwrap())
         .await
         .unwrap();
     println!("{}", result);
