@@ -9,6 +9,12 @@ use std::time::Duration;
 
 use std::fs::File;
 
+use trust_dns_client::client::{Client, SyncClient};
+use trust_dns_client::udp::UdpClientConnection;
+use std::str::FromStr;
+use trust_dns_client::op::DnsResponse;
+use trust_dns_client::rr::{DNSClass, Name, RData, Record, RecordType};
+
 #[cfg(feature = "tokio")]
 use crate::tokio;
 
@@ -38,6 +44,13 @@ pub struct WhoIs {
 }
 
 impl WhoIs {
+    pub fn from_host<T: AsRef<str>>(host: T) -> Result<WhoIs, WhoIsError>{
+        Ok(Self {
+            map: HashMap::new(),
+            ip: WhoIsServerValue::from_string(host)?,
+        })
+    }
+
     /// Read the list of WHOIS servers (JSON data) from a file to create a `WhoIs` instance.
     #[inline]
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<WhoIs, WhoIsError> {
@@ -115,6 +128,44 @@ impl WhoIs {
 }
 
 impl WhoIs {
+    pub fn can_find_server_for_tld(&mut self, mut tld: &str, dns_server: &str) -> bool {
+        let address = dns_server.parse().unwrap();
+        let conn = UdpClientConnection::new(address).unwrap();
+        let client = SyncClient::new(conn);
+        loop {
+            if self.map.contains_key(tld) {
+                break;
+            }
+            match tld.find('.') {
+                Some(index) => {
+                    tld = &tld[index + 1..];
+                }
+                None => {
+                    tld = "";
+                }
+            }
+            if tld.is_empty() {
+                break;
+            }
+            println!("TLD: {}", tld);
+            let name = Name::from_str(&format!("_nicname._tcp.{}.", tld)).unwrap();
+            let response: DnsResponse = client.query(&name, DNSClass::IN, RecordType::SRV).unwrap();
+            let answers: &[Record] = response.answers();
+            for record in answers {
+                if let RData::SRV(record) = record.rdata() {
+                    let target = record.target().to_string();
+                    let new_server = match WhoIsServerValue::from_string(&target[..target.len()-1]) {
+                        Ok(new_server) => new_server,
+                        Err(_error) => continue,
+                    };
+                    self.map.insert(tld.to_string(), new_server);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
         let mut server;
 
