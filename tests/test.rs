@@ -1,6 +1,3 @@
-extern crate tokio;
-extern crate whois_rust;
-
 use whois_rust::*;
 
 #[test]

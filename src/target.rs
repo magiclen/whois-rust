@@ -1,5 +1,5 @@
-use crate::validators::models::Host;
-use crate::validators::prelude::*;
+use validators::prelude::*;
+use validators_prelude::Host;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Validator)]
 #[validator(host(port(NotAllow)))]

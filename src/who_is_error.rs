@@ -2,12 +2,10 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
 
-use crate::serde_json;
-
 #[cfg(feature = "tokio")]
 use crate::tokio;
 
-use crate::validators::HostError;
+use validators::HostError;
 
 #[derive(Debug)]
 pub enum WhoIsError {

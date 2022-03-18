@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::validators::prelude::*;
+use validators::prelude::*;
 
 use crate::{Target, WhoIsError, WhoIsServerValue};
 

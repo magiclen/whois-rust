@@ -25,8 +25,6 @@ This is a simple example of **servers.json**.
 Then, use the `from_path` (or `from_string` if your JSON data is in-memory) associated function to create a `WhoIs` instance.
 
 ```rust,ignore
-extern crate whois_rust;
-
 use whois_rust::WhoIs;
 
 let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
@@ -35,8 +33,6 @@ let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
 Use the `lookup` method and input a `WhoIsLookupOptions` instance to lookup a domain or an IP.
 
 ```rust,ignore
-extern crate whois_rust;
-
 use whois_rust::{WhoIs, WhoIsLookupOptions};
 
 let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
@@ -66,13 +62,6 @@ cd whois-rust
 cargo test
 ```
 */
-
-#[macro_use]
-extern crate validators_derive;
-
-extern crate validators;
-
-extern crate serde_json;
 
 #[cfg(feature = "tokio")]
 pub extern crate tokio;

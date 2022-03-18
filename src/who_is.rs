@@ -1,7 +1,3 @@
-extern crate once_cell;
-extern crate regex;
-extern crate trust_dns_client;
-
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
@@ -13,15 +9,11 @@ use std::fs::File;
 use std::str::FromStr;
 
 #[cfg(feature = "tokio")]
-use crate::tokio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[cfg(feature = "tokio")]
-use crate::tokio::io::{AsyncReadExt, AsyncWriteExt};
+use serde_json::{Map, Value};
 
-use crate::serde_json::{self, Map, Value};
-use crate::validators::models::Host;
-
-use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
+use validators::models::Host;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -30,6 +22,8 @@ use trust_dns_client::client::{Client, SyncClient};
 use trust_dns_client::op::DnsResponse;
 use trust_dns_client::rr::{DNSClass, Name, RData, Record, RecordType};
 use trust_dns_client::udp::UdpClientConnection;
+
+use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 
 const DEFAULT_WHOIS_HOST_PORT: u16 = 43;
 const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
@@ -166,7 +160,7 @@ impl WhoIs {
             let answers: &[Record] = response.answers();
 
             for record in answers {
-                if let RData::SRV(record) = record.rdata() {
+                if let Some(RData::SRV(record)) = record.data() {
                     let target = record.target().to_string();
                     let new_server =
                         match WhoIsServerValue::from_string(&target[..target.len() - 1]) {
