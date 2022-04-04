@@ -292,9 +292,20 @@ impl WhoIs {
                     None => &self.ip,
                 };
 
+                // Remove [ ] wrapper around IPv6 addresses, which is added by to_uri_authority_string()
+                // at https://github.com/magiclen/validators/blob/953b61fdfcad45cda128cef71d91bec5a1207642/validators-derive/src/validator_handlers/ipv6.rs#L323
+                let target = options.target.to_uri_authority_string();
+                //eprintln!("target={}", target);
+                let re = Regex::new(r"^\[(.+)\]$").unwrap();
+                let bare_ip_string = match re.captures(&target) {
+                    Some(target) => target.get(1).unwrap().as_str().to_string(),
+                    None => target.to_string(),
+                };
+                //eprintln!("bare_ip_string={}", bare_ip_string);
+
                 Self::lookup_inner(
                     server,
-                    options.target.to_uri_authority_string().as_ref(),
+                    &bare_ip_string,
                     options.timeout,
                     options.follow,
                 )
