@@ -55,9 +55,14 @@ After enabling the async feature, the `from_path_async` function and the `lookup
 ## Testing
 
 ```bash
-git clone --recurse-submodules git://github.com/magiclen/whois-rust.git
+# git clone --recurse-submodules git://github.com/magiclen/whois-rust.git
+
+git clone git://github.com/magiclen/whois-rust.git
 
 cd whois-rust
+
+git submodule init
+git submodule update --recursive
 
 cargo test
 ```
