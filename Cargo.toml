@@ -3,6 +3,7 @@ name = "whois-rust"
 version = "1.5.1"
 authors = ["Magic Len <len@magiclen.org>"]
 edition = "2021"
+rust-version = "1.59"
 repository = "https://github.com/magiclen/whois-rust"
 homepage = "https://magiclen.org/whois-rust"
 keywords = ["whois"]

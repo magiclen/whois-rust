@@ -1,27 +1,25 @@
-use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::path::Path;
-use std::time::Duration;
-
-use std::fs::File;
-
-use std::str::FromStr;
-
-#[cfg(feature = "tokio")]
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use serde_json::{Map, Value};
-
-use validators::models::Host;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream, ToSocketAddrs},
+    path::Path,
+    str::FromStr,
+    time::Duration,
+};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-
-use trust_dns_client::client::{Client, SyncClient};
-use trust_dns_client::op::DnsResponse;
-use trust_dns_client::rr::{DNSClass, Name, RData, Record, RecordType};
-use trust_dns_client::udp::UdpClientConnection;
+use serde_json::{Map, Value};
+#[cfg(feature = "tokio")]
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use trust_dns_client::{
+    client::{Client, SyncClient},
+    op::DnsResponse,
+    rr::{DNSClass, Name, RData, Record, RecordType},
+    udp::UdpClientConnection,
+};
+use validators::models::Host;
 
 use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 
@@ -36,15 +34,14 @@ static RE_SERVER: Lazy<Regex> = Lazy::new(|| {
 #[derive(Debug, Clone)]
 pub struct WhoIs {
     map: HashMap<String, WhoIsServerValue>,
-    ip: WhoIsServerValue,
+    ip:  WhoIsServerValue,
 }
 
 impl WhoIs {
     /// Create a `WhoIs` instance which doesn't have a WHOIS server list. You should provide the host that is used for query ip. You may want to use the host `"whois.arin.net"`.
     pub fn from_host<T: AsRef<str>>(host: T) -> Result<WhoIs, WhoIsError> {
         Ok(Self {
-            map: HashMap::new(),
-            ip: WhoIsServerValue::from_string(host)?,
+            map: HashMap::new(), ip: WhoIsServerValue::from_string(host)?
         })
     }
 
@@ -94,17 +91,17 @@ impl WhoIs {
                             }
 
                             WhoIsServerValue::from_value(server)?
-                        }
+                        },
                         None => {
                             return Err(WhoIsError::MapError(
                                 "Cannot find `ip` in the `_` object in the server list.",
                             ));
-                        }
+                        },
                     }
                 } else {
                     return Err(WhoIsError::MapError("`_` in the server list is not an object."));
                 }
-            }
+            },
             None => return Err(WhoIsError::MapError("Cannot find `_` in the server list.")),
         };
 
@@ -145,10 +142,10 @@ impl WhoIs {
             match tld.find('.') {
                 Some(index) => {
                     tld = &tld[index + 1..];
-                }
+                },
                 None => {
                     tld = "";
-                }
+                },
             }
 
             if tld.is_empty() {
@@ -195,10 +192,10 @@ impl WhoIs {
             match tld.find('.') {
                 Some(index) => {
                     tld = &tld[index + 1..];
-                }
+                },
                 None => {
                     tld = "";
-                }
+                },
             }
         }
 
@@ -298,26 +295,24 @@ impl WhoIs {
                     options.timeout,
                     options.follow,
                 )
-            }
+            },
             Host::Domain(domain) => {
                 let server = match &options.server {
                     Some(server) => server,
-                    None => {
-                        match self.get_server_by_tld(domain.as_str()) {
-                            Some(server) => server,
-                            None => {
-                                return Err(WhoIsError::MapError(
-                                    "No whois server is known for this kind of object.",
-                                ));
-                            }
-                        }
-                    }
+                    None => match self.get_server_by_tld(domain.as_str()) {
+                        Some(server) => server,
+                        None => {
+                            return Err(WhoIsError::MapError(
+                                "No whois server is known for this kind of object.",
+                            ));
+                        },
+                    },
                 };
 
                 // punycode check is not necessary because the domain has been ascii-encoded
 
                 Self::lookup_inner(server, domain, options.timeout, options.follow)
-            }
+            },
         }
     }
 }
@@ -442,26 +437,24 @@ impl WhoIs {
                     options.follow,
                 )
                 .await
-            }
+            },
             Host::Domain(domain) => {
                 let server = match &options.server {
                     Some(server) => server,
-                    None => {
-                        match self.get_server_by_tld(domain.as_str()) {
-                            Some(server) => server,
-                            None => {
-                                return Err(WhoIsError::MapError(
-                                    "No whois server is known for this kind of object.",
-                                ));
-                            }
-                        }
-                    }
+                    None => match self.get_server_by_tld(domain.as_str()) {
+                        Some(server) => server,
+                        None => {
+                            return Err(WhoIsError::MapError(
+                                "No whois server is known for this kind of object.",
+                            ));
+                        },
+                    },
                 };
 
                 // punycode check is not necessary because the domain has been ascii-encoded
 
                 Self::lookup_inner_async(server, domain, options.timeout, options.follow).await
-            }
+            },
         }
     }
 }

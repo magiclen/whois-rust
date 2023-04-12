@@ -11,11 +11,11 @@ const DEFAULT_TIMEOUT: u64 = 60000;
 #[derive(Debug, Clone)]
 pub struct WhoIsLookupOptions {
     /// The target that you want to lookup.
-    pub target: Target,
+    pub target:  Target,
     /// The WHOIS server that you want to use. If it is **None**, an appropriate WHOIS server will be chosen from the list of WHOIS servers that the `WhoIs` instance have. The default value is **None**.
-    pub server: Option<WhoIsServerValue>,
+    pub server:  Option<WhoIsServerValue>,
     /// Number of times to follow redirects. The default value is 2.
-    pub follow: u16,
+    pub follow:  u16,
     /// Socket timeout in milliseconds. The default value is 60000.
     pub timeout: Option<Duration>,
 }

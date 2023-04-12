@@ -1,11 +1,13 @@
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
-use std::io;
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+    io,
+};
+
+use validators::HostError;
 
 #[cfg(feature = "tokio")]
 use crate::tokio;
-
-use validators::HostError;
 
 #[derive(Debug)]
 pub enum WhoIsError {
