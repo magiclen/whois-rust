@@ -9,7 +9,6 @@ homepage = "https://magiclen.org/whois-rust"
 keywords = ["whois"]
 categories = ["web-programming::websocket"]
 description = "This is a WHOIS client library for Rust, inspired by https://github.com/hjr265/node-whois"
-readme = "README.md"
 license = "MIT"
 include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
