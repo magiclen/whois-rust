@@ -19,7 +19,7 @@ use trust_dns_client::{
     rr::{DNSClass, Name, RData, Record, RecordType},
     udp::UdpClientConnection,
 };
-use validators::models::Host;
+use validators::{models::Host, prelude::*};
 
 use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 

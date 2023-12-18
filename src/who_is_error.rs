@@ -4,7 +4,7 @@ use std::{
     io,
 };
 
-use validators::HostError;
+use validators::errors::HostError;
 
 #[cfg(feature = "tokio")]
 use crate::tokio;

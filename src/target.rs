@@ -2,7 +2,7 @@ use validators::prelude::*;
 use validators_prelude::Host;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Validator)]
-#[validator(host(port(NotAllow)))]
+#[validator(host(port(Disallow)))]
 pub struct Target(pub(crate) Host);
 
 impl Target {

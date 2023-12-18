@@ -1,9 +1,9 @@
 [package]
 name = "whois-rust"
-version = "1.5.2"
+version = "1.6.0"
 authors = ["Magic Len <len@magiclen.org>"]
 edition = "2021"
-rust-version = "1.64"
+rust-version = "1.69"
 repository = "https://github.com/magiclen/whois-rust"
 homepage = "https://magiclen.org/whois-rust"
 keywords = ["whois"]
@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["fs", "net", "time", "io-util"], optional =
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [dependencies.validators]
-version = "0.24"
+version = "0.25"
 default-features = false
 features = ["derive", "host"]
 
