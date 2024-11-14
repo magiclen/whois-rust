@@ -27,7 +27,7 @@ const DEFAULT_WHOIS_HOST_PORT: u16 = 43;
 const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
 
 static RE_SERVER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(ReferralServer|Registrar Whois|Whois Server|WHOIS Server|Registrar WHOIS Server):[^\S\n]*(r?whois://)?(.*)").unwrap()
+    Regex::new(r"(ReferralServer|Registrar Whois|Whois Server|WHOIS Server|Registrar WHOIS Server|whois):[^\S\n]*(r?whois://)?(.*)").unwrap()
 });
 
 /// The `WhoIs` structure stores the list of WHOIS servers in-memory.
