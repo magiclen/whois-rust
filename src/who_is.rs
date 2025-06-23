@@ -175,7 +175,7 @@ impl WhoIs {
         false
     }
 
-    fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
+    pub fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
         let mut server;
 
         loop {
