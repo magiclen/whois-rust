@@ -8,8 +8,8 @@ const DEFAULT_PUNYCODE: bool = true;
 /// The model of a WHOIS server.
 #[derive(Debug, Clone)]
 pub struct WhoIsServerValue {
-    pub host:     WhoIsHost,
-    pub query:    Option<String>,
+    pub host: WhoIsHost,
+    pub query: Option<String>,
     pub punycode: bool,
 }
 
@@ -56,11 +56,7 @@ impl WhoIsServerValue {
                         None => DEFAULT_PUNYCODE,
                     };
 
-                    Ok(WhoIsServerValue {
-                        host,
-                        query,
-                        punycode,
-                    })
+                    Ok(WhoIsServerValue { host, query, punycode })
                 },
                 _ => Err(WhoIsError::MapError(
                     "The server value is an object, but it has not a host string.",
@@ -82,10 +78,6 @@ impl WhoIsServerValue {
             },
         };
 
-        Ok(WhoIsServerValue {
-            host,
-            query: None,
-            punycode: DEFAULT_PUNYCODE,
-        })
+        Ok(WhoIsServerValue { host, query: None, punycode: DEFAULT_PUNYCODE })
     }
 }

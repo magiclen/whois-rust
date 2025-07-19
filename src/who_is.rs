@@ -34,15 +34,13 @@ static RE_SERVER: Lazy<Regex> = Lazy::new(|| {
 #[derive(Debug, Clone)]
 pub struct WhoIs {
     map: HashMap<String, WhoIsServerValue>,
-    ip:  WhoIsServerValue,
+    ip: WhoIsServerValue,
 }
 
 impl WhoIs {
     /// Create a `WhoIs` instance which doesn't have a WHOIS server list. You should provide the host that is used for query ip. You may want to use the host `"whois.arin.net"`.
     pub fn from_host<T: AsRef<str>>(host: T) -> Result<WhoIs, WhoIsError> {
-        Ok(Self {
-            map: HashMap::new(), ip: WhoIsServerValue::from_string(host)?
-        })
+        Ok(Self { map: HashMap::new(), ip: WhoIsServerValue::from_string(host)? })
     }
 
     /// Read the list of WHOIS servers (JSON data) from a file to create a `WhoIs` instance.
@@ -114,10 +112,7 @@ impl WhoIs {
             }
         }
 
-        Ok(WhoIs {
-            map: new_map,
-            ip,
-        })
+        Ok(WhoIs { map: new_map, ip })
     }
 }
 
