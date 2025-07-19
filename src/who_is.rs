@@ -216,7 +216,7 @@ impl WhoIs {
 
         client.read_to_end(&mut bytes)?;
 
-        let utf8_res = str::from_utf8(&bytes);
+        let utf8_res = std::str::from_utf8(&bytes);
 
         if let Ok(utf8_data) = utf8_res {
             *query_result = utf8_data.to_string();
@@ -380,7 +380,7 @@ impl WhoIs {
 
         client.read_to_end(&mut bytes).await?;
 
-        let utf8_res = str::from_utf8(&bytes);
+        let utf8_res = std::str::from_utf8(&bytes);
 
         if let Ok(utf8_data) = utf8_res {
             *query_result = utf8_data.to_string();
