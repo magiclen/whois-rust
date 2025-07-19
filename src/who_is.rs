@@ -202,6 +202,53 @@ impl WhoIs {
         server
     }
 
+    #[cfg(not(feature = "chardet"))]
+    fn decode_string_sync(
+        mut client: TcpStream,
+        query_result: &mut String,
+    ) -> Result<(), std::io::Error> {
+        client.read_to_string(query_result)?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "chardet")]
+    fn decode_string_sync(
+        mut client: TcpStream,
+        query_result: &mut String,
+    ) -> Result<(), WhoIsError> {
+        let mut bytes = Vec::new();
+
+        client.read_to_end(&mut bytes)?;
+
+        let utf8_res = str::from_utf8(&bytes);
+
+        if let Ok(utf8_data) = utf8_res {
+            *query_result = utf8_data.to_string();
+        } else {
+            *query_result = Self::decode_non_utf8(&bytes)?;
+        }
+
+        Ok(())
+    }
+    
+    #[cfg(feature = "chardet")]
+    fn decode_non_utf8(bytes: &[u8]) -> Result<String, WhoIsError> {
+        // Use chardet
+        let encoding = chardetng::EncodingDetector::new().guess(Some(bytes), false);
+
+        let mut utf16_bytes = Vec::new();
+
+        let (result, _, _, _) =
+            encoding.new_decoder().decode_to_utf16(bytes, &mut utf16_bytes, true);
+
+        if !matches!(result, encoding_rs::CoderResult::InputEmpty) {
+            return Err(WhoIsError::OutputFull)
+        }
+
+        String::from_utf16(&utf16_bytes).map_err(|e| e.into())
+    }
+
     fn lookup_once(
         server: &WhoIsServerValue,
         text: &str,
@@ -245,7 +292,7 @@ impl WhoIs {
 
         let mut query_result = String::new();
 
-        client.read_to_string(&mut query_result)?;
+        Self::decode_string_sync(client, &mut query_result)?;
 
         Ok((addr, query_result))
     }
@@ -319,6 +366,36 @@ impl WhoIs {
 
 #[cfg(feature = "tokio")]
 impl WhoIs {
+    #[cfg(not(feature = "chardet"))]
+    async fn decode_string_async(
+        mut client: tokio::net::TcpStream,
+        query_result: &mut String,
+    ) -> Result<(), tokio::io::Error> {
+        client.read_to_string(query_result).await?;
+
+        Ok(())
+    }
+    
+    #[cfg(feature = "chardet")]
+    async fn decode_string_async(
+        mut client: tokio::net::TcpStream,
+        query_result: &mut String,
+    ) -> Result<(), WhoIsError> {
+        let mut bytes = Vec::new();
+
+        client.read_to_end(&mut bytes).await?;
+
+        let utf8_res = str::from_utf8(&bytes);
+
+        if let Ok(utf8_data) = utf8_res {
+            *query_result = utf8_data.to_string();
+        } else {
+            *query_result = Self::decode_non_utf8(&bytes)?;
+        }
+
+        Ok(())
+    }
+
     async fn lookup_inner_once_async<'a>(
         server: &WhoIsServerValue,
         text: &str,
@@ -366,7 +443,8 @@ impl WhoIs {
 
             let mut query_result = String::new();
 
-            tokio::time::timeout(timeout, client.read_to_string(&mut query_result)).await??;
+            tokio::time::timeout(timeout, Self::decode_string_async(client, &mut query_result))
+                .await??;
 
             Ok((addr, query_result))
         } else {
@@ -384,7 +462,7 @@ impl WhoIs {
 
             let mut query_result = String::new();
 
-            client.read_to_string(&mut query_result).await?;
+            Self::decode_string_async(client, &mut query_result).await?;
 
             Ok((addr, query_result))
         }
