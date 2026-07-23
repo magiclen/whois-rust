@@ -60,7 +60,7 @@ jobs:
           - macos-latest
           - windows-latest
         toolchain:
-          - 1.69
+          - 1.89
         features:
           -
           - --features tokio

@@ -5,10 +5,10 @@ use std::{
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     path::Path,
     str::FromStr,
+    sync::LazyLock,
     time::Duration,
 };
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
 #[cfg(feature = "tokio")]
@@ -26,7 +26,7 @@ use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 const DEFAULT_WHOIS_HOST_PORT: u16 = 43;
 const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
 
-static RE_SERVER: Lazy<Regex> = Lazy::new(|| {
+static RE_SERVER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(ReferralServer|Registrar Whois|Whois Server|WHOIS Server|Registrar WHOIS Server):[^\S\n]*(r?whois://)?(.*)").unwrap()
 });
 
@@ -259,18 +259,18 @@ impl WhoIs {
         let mut query_result = Self::lookup_once(server, text, timeout)?;
 
         while follow > 0 {
-            if let Some(c) = RE_SERVER.captures(&query_result.1) {
-                if let Some(h) = c.get(3) {
-                    let h = h.as_str();
-                    if h.ne(&query_result.0) {
-                        if let Ok(server) = WhoIsServerValue::from_string(h) {
-                            query_result = Self::lookup_once(&server, text, timeout)?;
+            if let Some(c) = RE_SERVER.captures(&query_result.1)
+                && let Some(h) = c.get(3)
+            {
+                let h = h.as_str();
+                if h.ne(&query_result.0)
+                    && let Ok(server) = WhoIsServerValue::from_string(h)
+                {
+                    query_result = Self::lookup_once(&server, text, timeout)?;
 
-                            follow -= 1;
+                    follow -= 1;
 
-                            continue;
-                        }
-                    }
+                    continue;
                 }
             }
 
@@ -319,7 +319,7 @@ impl WhoIs {
 
 #[cfg(feature = "tokio")]
 impl WhoIs {
-    async fn lookup_inner_once_async<'a>(
+    async fn lookup_inner_once_async(
         server: &WhoIsServerValue,
         text: &str,
         timeout: Option<Duration>,
@@ -399,19 +399,18 @@ impl WhoIs {
         let mut query_result = Self::lookup_inner_once_async(server, text, timeout).await?;
 
         while follow > 0 {
-            if let Some(c) = RE_SERVER.captures(&query_result.1) {
-                if let Some(h) = c.get(3) {
-                    let h = h.as_str();
-                    if h.ne(&query_result.0) {
-                        if let Ok(server) = WhoIsServerValue::from_string(h) {
-                            query_result =
-                                Self::lookup_inner_once_async(&server, text, timeout).await?;
+            if let Some(c) = RE_SERVER.captures(&query_result.1)
+                && let Some(h) = c.get(3)
+            {
+                let h = h.as_str();
+                if h.ne(&query_result.0)
+                    && let Ok(server) = WhoIsServerValue::from_string(h)
+                {
+                    query_result = Self::lookup_inner_once_async(&server, text, timeout).await?;
 
-                            follow -= 1;
+                    follow -= 1;
 
-                            continue;
-                        }
-                    }
+                    continue;
                 }
             }
 
