@@ -9,16 +9,16 @@ use std::{
     time::Duration,
 };
 
-use regex::Regex;
-use serde_json::{Map, Value};
-#[cfg(feature = "tokio")]
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use trust_dns_client::{
+use hickory_client::{
     client::{Client, SyncClient},
     op::DnsResponse,
     rr::{DNSClass, Name, RData, Record, RecordType},
     udp::UdpClientConnection,
 };
+use regex::Regex;
+use serde_json::{Map, Value};
+#[cfg(feature = "tokio")]
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use validators::{models::Host, prelude::*};
 
 use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
@@ -129,21 +129,27 @@ impl WhoIs {
 }
 
 impl WhoIs {
+    /// Try to find a WHOIS server for a TLD by querying the `_nicname._tcp.<tld>` SRV records through the given DNS server, caching any server that is found for later lookups. Returns whether a server is available for the TLD (already known or newly discovered).
     pub fn can_find_server_for_tld<T: AsRef<str>, D: AsRef<str>>(
         &mut self,
         tld: T,
         dns_server: D,
-    ) -> bool {
+    ) -> Result<bool, WhoIsError> {
         let mut tld = tld.as_ref();
         let dns_server = dns_server.as_ref();
 
-        let address = dns_server.parse().unwrap();
-        let conn = UdpClientConnection::new(address).unwrap();
+        let address = match dns_server.parse() {
+            Ok(address) => address,
+            Err(_error) => {
+                return Err(WhoIsError::MapError("The DNS server address is incorrect."));
+            },
+        };
+        let conn = UdpClientConnection::new(address).map_err(io::Error::other)?;
         let client = SyncClient::new(conn);
 
         loop {
             if self.map.contains_key(tld) {
-                break;
+                return Ok(true);
             }
 
             match tld.find('.') {
@@ -156,30 +162,30 @@ impl WhoIs {
             }
 
             if tld.is_empty() {
-                break;
+                return Ok(false);
             }
 
-            let name = Name::from_str(&format!("_nicname._tcp.{}.", tld)).unwrap();
-            let response: DnsResponse = client.query(&name, DNSClass::IN, RecordType::SRV).unwrap();
+            let name =
+                Name::from_str(&format!("_nicname._tcp.{tld}.")).map_err(io::Error::other)?;
+            let response: DnsResponse =
+                client.query(&name, DNSClass::IN, RecordType::SRV).map_err(io::Error::other)?;
             let answers: &[Record] = response.answers();
 
             for record in answers {
                 if let Some(RData::SRV(record)) = record.data() {
                     let target = record.target().to_string();
                     let new_server =
-                        match WhoIsServerValue::from_string(&target[..target.len() - 1]) {
+                        match WhoIsServerValue::from_string(target.trim_end_matches('.')) {
                             Ok(new_server) => new_server,
                             Err(_error) => continue,
                         };
 
                     self.map.insert(tld.to_string(), new_server);
 
-                    return true;
+                    return Ok(true);
                 }
             }
         }
-
-        false
     }
 
     fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
