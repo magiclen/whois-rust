@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     path::Path,
     str::FromStr,
@@ -29,6 +29,13 @@ const DEFAULT_WHOIS_HOST_QUERY: &str = "$addr\r\n";
 static RE_SERVER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(ReferralServer|Registrar Whois|Whois Server|WHOIS Server|Registrar WHOIS Server):[^\S\n]*(r?whois://)?(.*)").unwrap()
 });
+
+/// Extract the referral WHOIS host from a query result. The captured value is trimmed because responses usually end lines with CRLF, and a trailing `\r` would make the host unparsable.
+fn extract_referral_host(query_result: &str) -> Option<&str> {
+    let host = RE_SERVER.captures(query_result)?.get(3)?.as_str().trim();
+
+    if host.is_empty() { None } else { Some(host) }
+}
 
 /// The `WhoIs` structure stores the list of WHOIS servers in-memory.
 #[derive(Debug, Clone)]
@@ -212,6 +219,14 @@ impl WhoIs {
         let mut client = if let Some(timeout) = timeout {
             let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs()?.collect();
 
+            if socket_addrs.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::AddrNotAvailable,
+                    "the host is not resolved to any socket address",
+                )
+                .into());
+            }
+
             let mut client = None;
 
             for socket_addr in socket_addrs.iter().take(socket_addrs.len() - 1) {
@@ -247,7 +262,8 @@ impl WhoIs {
 
         client.read_to_string(&mut query_result)?;
 
-        Ok((addr, query_result))
+        // Return the host without the port so a referral host can be compared against it.
+        Ok((server.host.host.to_string(), query_result))
     }
 
     fn lookup_inner(
@@ -259,19 +275,15 @@ impl WhoIs {
         let mut query_result = Self::lookup_once(server, text, timeout)?;
 
         while follow > 0 {
-            if let Some(c) = RE_SERVER.captures(&query_result.1)
-                && let Some(h) = c.get(3)
+            if let Some(h) = extract_referral_host(&query_result.1)
+                && !h.eq_ignore_ascii_case(&query_result.0)
+                && let Ok(server) = WhoIsServerValue::from_string(h)
             {
-                let h = h.as_str();
-                if h.ne(&query_result.0)
-                    && let Ok(server) = WhoIsServerValue::from_string(h)
-                {
-                    query_result = Self::lookup_once(&server, text, timeout)?;
+                query_result = Self::lookup_once(&server, text, timeout)?;
 
-                    follow -= 1;
+                follow -= 1;
 
-                    continue;
-                }
+                continue;
             }
 
             break;
@@ -309,9 +321,10 @@ impl WhoIs {
                     },
                 };
 
-                // punycode check is not necessary because the domain has been ascii-encoded
+                // The domain is already ASCII (Punycode) encoded; decode it back to Unicode for servers that require it.
+                let text = server.encode_domain(domain);
 
-                Self::lookup_inner(server, domain, options.timeout, options.follow)
+                Self::lookup_inner(server, text.as_ref(), options.timeout, options.follow)
             },
         }
     }
@@ -319,7 +332,7 @@ impl WhoIs {
 
 #[cfg(feature = "tokio")]
 impl WhoIs {
-    async fn lookup_inner_once_async(
+    async fn lookup_once_async(
         server: &WhoIsServerValue,
         text: &str,
         timeout: Option<Duration>,
@@ -328,6 +341,14 @@ impl WhoIs {
 
         if let Some(timeout) = timeout {
             let socket_addrs: Vec<SocketAddr> = addr.to_socket_addrs()?.collect();
+
+            if socket_addrs.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::AddrNotAvailable,
+                    "the host is not resolved to any socket address",
+                )
+                .into());
+            }
 
             let mut client = None;
 
@@ -368,7 +389,8 @@ impl WhoIs {
 
             tokio::time::timeout(timeout, client.read_to_string(&mut query_result)).await??;
 
-            Ok((addr, query_result))
+            // Return the host without the port so a referral host can be compared against it.
+            Ok((server.host.host.to_string(), query_result))
         } else {
             let mut client = tokio::net::TcpStream::connect(&addr).await?;
 
@@ -386,7 +408,8 @@ impl WhoIs {
 
             client.read_to_string(&mut query_result).await?;
 
-            Ok((addr, query_result))
+            // Return the host without the port so a referral host can be compared against it.
+            Ok((server.host.host.to_string(), query_result))
         }
     }
 
@@ -396,22 +419,18 @@ impl WhoIs {
         timeout: Option<Duration>,
         mut follow: u16,
     ) -> Result<String, WhoIsError> {
-        let mut query_result = Self::lookup_inner_once_async(server, text, timeout).await?;
+        let mut query_result = Self::lookup_once_async(server, text, timeout).await?;
 
         while follow > 0 {
-            if let Some(c) = RE_SERVER.captures(&query_result.1)
-                && let Some(h) = c.get(3)
+            if let Some(h) = extract_referral_host(&query_result.1)
+                && !h.eq_ignore_ascii_case(&query_result.0)
+                && let Ok(server) = WhoIsServerValue::from_string(h)
             {
-                let h = h.as_str();
-                if h.ne(&query_result.0)
-                    && let Ok(server) = WhoIsServerValue::from_string(h)
-                {
-                    query_result = Self::lookup_inner_once_async(&server, text, timeout).await?;
+                query_result = Self::lookup_once_async(&server, text, timeout).await?;
 
-                    follow -= 1;
+                follow -= 1;
 
-                    continue;
-                }
+                continue;
             }
 
             break;
@@ -450,10 +469,24 @@ impl WhoIs {
                     },
                 };
 
-                // punycode check is not necessary because the domain has been ascii-encoded
+                // The domain is already ASCII (Punycode) encoded; decode it back to Unicode for servers that require it.
+                let text = server.encode_domain(domain);
 
-                Self::lookup_inner_async(server, domain, options.timeout, options.follow).await
+                Self::lookup_inner_async(server, text.as_ref(), options.timeout, options.follow)
+                    .await
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_referral_host;
+
+    #[test]
+    fn extract_referral_host_trims_trailing_cr() {
+        let body = "Domain: example.com\r\nReferralServer: whois://whois.arin.net\r\n";
+
+        assert_eq!(Some("whois.arin.net"), extract_referral_host(body));
     }
 }
