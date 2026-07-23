@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde_json::Value;
 use validators::prelude::*;
 
@@ -24,7 +26,7 @@ impl WhoIsServerValue {
                             return Err(WhoIsError::MapError(
                                 "The server value is an object, but it has not a correct host \
                                  string.",
-                            ))
+                            ));
                         },
                     };
 
@@ -78,7 +80,7 @@ impl WhoIsServerValue {
         let host = match WhoIsHost::parse_str(host) {
             Ok(host) => host,
             Err(_) => {
-                return Err(WhoIsError::MapError("The server value is not a correct host string."))
+                return Err(WhoIsError::MapError("The server value is not a correct host string."));
             },
         };
 
@@ -87,5 +89,31 @@ impl WhoIsServerValue {
             query: None,
             punycode: DEFAULT_PUNYCODE,
         })
+    }
+
+    /// Return the domain text to send to this server. The input is expected to be already ASCII (Punycode) encoded. When `punycode` is `false`, it is decoded back to Unicode, which some servers (e.g. DENIC for `.de`) require.
+    pub(crate) fn encode_domain<'a>(&self, domain: &'a str) -> Cow<'a, str> {
+        if self.punycode {
+            Cow::Borrowed(domain)
+        } else {
+            Cow::Owned(validators::idna::domain_to_unicode(domain).0)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_domain_honors_punycode_flag() {
+        let mut server = WhoIsServerValue::from_string("whois.denic.de").unwrap();
+
+        // The default keeps the ASCII (Punycode) form.
+        assert_eq!("xn--mller-kva.de", server.encode_domain("xn--mller-kva.de").as_ref());
+
+        // A server with `punycode: false` receives the Unicode form.
+        server.punycode = false;
+        assert_eq!("müller.de", server.encode_domain("xn--mller-kva.de").as_ref());
     }
 }

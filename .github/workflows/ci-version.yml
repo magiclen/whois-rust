@@ -26,7 +26,7 @@ jobs:
     name: Test ${{ matrix.toolchain }} on ${{ matrix.os }} (${{ matrix.features }})
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -44,14 +44,14 @@ jobs:
           - macos-latest
           - windows-latest
         toolchain:
-          - 1.69
+          - 1.89
         features:
           -
           - --features tokio
     name: Test ${{ matrix.toolchain }} on ${{ matrix.os }} (${{ matrix.features }})
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: actions-rust-lang/setup-rust-toolchain@v1
