@@ -13,16 +13,16 @@ license = "MIT"
 include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
 [dependencies]
-serde_json = "1"
+serde_json = "1.0.45"
 regex = "1"
 trust-dns-client = "0.23"
 
-tokio = { version = "1", features = ["fs", "net", "time", "io-util"], optional = true }
+tokio = { version = "1.21", features = ["fs", "net", "time", "io-util"], optional = true }
 
 validators = { version = "0.26", default-features = false, features = ["derive", "host"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1.21", features = ["macros", "rt"] }
 
 [features]
 tokio = ["dep:tokio"]
