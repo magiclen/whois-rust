@@ -40,6 +40,8 @@ let whois = WhoIs::from_path("/path/to/servers.json").unwrap();
 let result: String = whois.lookup(WhoIsLookupOptions::from_string("magiclen.org").unwrap()).unwrap();
 ```
 
+The `lookup` method decodes the WHOIS response into a `String`. When the response is not valid UTF-8, it is decoded using the `charset` feature (enabled by default). If you need the exact bytes instead, use the `lookup_raw` method, which returns a `Vec<u8>`.
+
 ## Asynchronous APIs
 
 You may want to use async APIs with your async runtime. This crate supports `tokio`, currently.

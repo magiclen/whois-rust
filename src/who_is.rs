@@ -19,7 +19,7 @@ use regex::Regex;
 use serde_json::{Map, Value};
 #[cfg(feature = "tokio")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use validators::{models::Host, prelude::*};
+use validators::models::Host;
 
 use crate::{WhoIsError, WhoIsLookupOptions, WhoIsServerValue};
 
@@ -35,6 +35,38 @@ fn extract_referral_host(query_result: &str) -> Option<&str> {
     let host = RE_SERVER.captures(query_result)?.get(3)?.as_str().trim();
 
     if host.is_empty() { None } else { Some(host) }
+}
+
+/// Decode the raw bytes of a WHOIS response into a `String`. Valid UTF-8 always passes through unchanged. When the `charset` feature is disabled, invalid UTF-8 falls back to a lossy conversion (malformed bytes become `U+FFFD`).
+#[cfg(not(feature = "charset"))]
+fn decode_response(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
+/// Decode the raw bytes of a WHOIS response into a `String`. Valid UTF-8 always passes through unchanged. Otherwise the encoding is detected with `chardetng` and decoded with `encoding_rs` (malformed bytes become `U+FFFD`).
+#[cfg(feature = "charset")]
+fn decode_response(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+
+    let mut detector = chardetng::EncodingDetector::new();
+
+    detector.feed(bytes, true);
+
+    detector.guess(None, true).decode(bytes).0.into_owned()
+}
+
+/// Format an IP target as WHOIS query text. Unlike a URI authority, IPv6 addresses are **not** wrapped in `[` and `]`, which is what WHOIS servers expect.
+fn format_ip_query(host: &Host) -> String {
+    match host {
+        Host::IPv4(ip) => ip.to_string(),
+        Host::IPv6(ip) => ip.to_string(),
+        Host::Domain(domain) => domain.to_string(),
+    }
 }
 
 /// The `WhoIs` structure stores the list of WHOIS servers in-memory.
@@ -188,7 +220,8 @@ impl WhoIs {
         }
     }
 
-    fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
+    /// Try to find a WHOIS server for a TLD from the in-memory server list, walking up the labels of the given TLD/domain (e.g. `a.b.example` -> `b.example` -> `example` -> `""`) until a match is found. Returns the matched server, if any.
+    pub fn get_server_by_tld(&self, mut tld: &str) -> Option<&WhoIsServerValue> {
         let mut server;
 
         loop {
@@ -219,7 +252,7 @@ impl WhoIs {
         server: &WhoIsServerValue,
         text: &str,
         timeout: Option<Duration>,
-    ) -> Result<(String, String), WhoIsError> {
+    ) -> Result<(String, Vec<u8>), WhoIsError> {
         let addr = server.host.to_addr_string(DEFAULT_WHOIS_HOST_PORT);
 
         let mut client = if let Some(timeout) = timeout {
@@ -264,9 +297,9 @@ impl WhoIs {
 
         client.flush()?;
 
-        let mut query_result = String::new();
+        let mut query_result = Vec::new();
 
-        client.read_to_string(&mut query_result)?;
+        client.read_to_end(&mut query_result)?;
 
         // Return the host without the port so a referral host can be compared against it.
         Ok((server.host.host.to_string(), query_result))
@@ -277,11 +310,13 @@ impl WhoIs {
         text: &str,
         timeout: Option<Duration>,
         mut follow: u16,
-    ) -> Result<String, WhoIsError> {
+    ) -> Result<Vec<u8>, WhoIsError> {
         let mut query_result = Self::lookup_once(server, text, timeout)?;
 
         while follow > 0 {
-            if let Some(h) = extract_referral_host(&query_result.1)
+            let body = decode_response(&query_result.1);
+
+            if let Some(h) = extract_referral_host(&body)
                 && !h.eq_ignore_ascii_case(&query_result.0)
                 && let Ok(server) = WhoIsServerValue::from_string(h)
             {
@@ -298,8 +333,8 @@ impl WhoIs {
         Ok(query_result.1)
     }
 
-    /// Lookup a domain or an IP.
-    pub fn lookup(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
+    /// Lookup a domain or an IP, returning the raw bytes of the final WHOIS response without decoding.
+    pub fn lookup_raw(&self, options: WhoIsLookupOptions) -> Result<Vec<u8>, WhoIsError> {
         match &options.target.0 {
             Host::IPv4(_) | Host::IPv6(_) => {
                 let server = match &options.server {
@@ -307,12 +342,9 @@ impl WhoIs {
                     None => &self.ip,
                 };
 
-                Self::lookup_inner(
-                    server,
-                    options.target.to_uri_authority_string().as_ref(),
-                    options.timeout,
-                    options.follow,
-                )
+                let text = format_ip_query(&options.target.0);
+
+                Self::lookup_inner(server, &text, options.timeout, options.follow)
             },
             Host::Domain(domain) => {
                 let server = match &options.server {
@@ -334,6 +366,12 @@ impl WhoIs {
             },
         }
     }
+
+    /// Lookup a domain or an IP.
+    #[inline]
+    pub fn lookup(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
+        Ok(decode_response(&self.lookup_raw(options)?))
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -342,7 +380,7 @@ impl WhoIs {
         server: &WhoIsServerValue,
         text: &str,
         timeout: Option<Duration>,
-    ) -> Result<(String, String), WhoIsError> {
+    ) -> Result<(String, Vec<u8>), WhoIsError> {
         let addr = server.host.to_addr_string(DEFAULT_WHOIS_HOST_PORT);
 
         if let Some(timeout) = timeout {
@@ -391,9 +429,9 @@ impl WhoIs {
 
             tokio::time::timeout(timeout, client.flush()).await??;
 
-            let mut query_result = String::new();
+            let mut query_result = Vec::new();
 
-            tokio::time::timeout(timeout, client.read_to_string(&mut query_result)).await??;
+            tokio::time::timeout(timeout, client.read_to_end(&mut query_result)).await??;
 
             // Return the host without the port so a referral host can be compared against it.
             Ok((server.host.host.to_string(), query_result))
@@ -410,9 +448,9 @@ impl WhoIs {
 
             client.flush().await?;
 
-            let mut query_result = String::new();
+            let mut query_result = Vec::new();
 
-            client.read_to_string(&mut query_result).await?;
+            client.read_to_end(&mut query_result).await?;
 
             // Return the host without the port so a referral host can be compared against it.
             Ok((server.host.host.to_string(), query_result))
@@ -424,11 +462,13 @@ impl WhoIs {
         text: &'a str,
         timeout: Option<Duration>,
         mut follow: u16,
-    ) -> Result<String, WhoIsError> {
+    ) -> Result<Vec<u8>, WhoIsError> {
         let mut query_result = Self::lookup_once_async(server, text, timeout).await?;
 
         while follow > 0 {
-            if let Some(h) = extract_referral_host(&query_result.1)
+            let body = decode_response(&query_result.1);
+
+            if let Some(h) = extract_referral_host(&body)
                 && !h.eq_ignore_ascii_case(&query_result.0)
                 && let Ok(server) = WhoIsServerValue::from_string(h)
             {
@@ -445,8 +485,11 @@ impl WhoIs {
         Ok(query_result.1)
     }
 
-    /// Lookup a domain or an IP.
-    pub async fn lookup_async(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
+    /// Lookup a domain or an IP, returning the raw bytes of the final WHOIS response without decoding.
+    pub async fn lookup_raw_async(
+        &self,
+        options: WhoIsLookupOptions,
+    ) -> Result<Vec<u8>, WhoIsError> {
         match &options.target.0 {
             Host::IPv4(_) | Host::IPv6(_) => {
                 let server = match &options.server {
@@ -454,13 +497,9 @@ impl WhoIs {
                     None => &self.ip,
                 };
 
-                Self::lookup_inner_async(
-                    server,
-                    options.target.to_uri_authority_string().as_ref(),
-                    options.timeout,
-                    options.follow,
-                )
-                .await
+                let text = format_ip_query(&options.target.0);
+
+                Self::lookup_inner_async(server, &text, options.timeout, options.follow).await
             },
             Host::Domain(domain) => {
                 let server = match &options.server {
@@ -483,16 +522,40 @@ impl WhoIs {
             },
         }
     }
+
+    /// Lookup a domain or an IP.
+    #[inline]
+    pub async fn lookup_async(&self, options: WhoIsLookupOptions) -> Result<String, WhoIsError> {
+        Ok(decode_response(&self.lookup_raw_async(options).await?))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::extract_referral_host;
+    use super::{decode_response, extract_referral_host};
 
     #[test]
     fn extract_referral_host_trims_trailing_cr() {
         let body = "Domain: example.com\r\nReferralServer: whois://whois.arin.net\r\n";
 
         assert_eq!(Some("whois.arin.net"), extract_referral_host(body));
+    }
+
+    #[test]
+    fn decode_response_passes_through_utf8() {
+        assert_eq!("café", decode_response("café".as_bytes()));
+    }
+
+    // "café" with `é` as the single byte 0xE9 (Windows-1252 / ISO-8859-1).
+    #[cfg(feature = "charset")]
+    #[test]
+    fn decode_response_detects_windows_1252() {
+        assert_eq!("café", decode_response(&[b'c', b'a', b'f', 0xE9]));
+    }
+
+    #[cfg(not(feature = "charset"))]
+    #[test]
+    fn decode_response_is_lossy_without_charset() {
+        assert_eq!("caf\u{FFFD}", decode_response(&[b'c', b'a', b'f', 0xE9]));
     }
 }
