@@ -24,7 +24,7 @@ impl WhoIsServerValue {
                             return Err(WhoIsError::MapError(
                                 "The server value is an object, but it has not a correct host \
                                  string.",
-                            ))
+                            ));
                         },
                     };
 
@@ -78,7 +78,7 @@ impl WhoIsServerValue {
         let host = match WhoIsHost::parse_str(host) {
             Ok(host) => host,
             Err(_) => {
-                return Err(WhoIsError::MapError("The server value is not a correct host string."))
+                return Err(WhoIsError::MapError("The server value is not a correct host string."));
             },
         };
 
