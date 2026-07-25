@@ -1,6 +1,18 @@
 use whois_rust::*;
 
 #[test]
+fn test_server_list() {
+    let who = WhoIs::from_path("tests/data/servers.json").unwrap();
+
+    let server = who.get_server_by_tld("magiclen.org").unwrap();
+    assert_eq!("whois.pir.org", server.host.host().to_string());
+
+    // Any other TLD falls back to the `""` entry.
+    let server = who.get_server_by_tld("magiclen.com.tw").unwrap();
+    assert_eq!("whois.ripe.net", server.host.host().to_string());
+}
+
+#[test]
 fn test() {
     let who = WhoIs::from_path("node-whois/servers.json").unwrap();
 
@@ -11,6 +23,7 @@ fn test() {
     println!("{}", result);
 }
 
+#[cfg(feature = "srv")]
 #[test]
 fn test_srv() {
     let mut who = WhoIs::from_host("whois.arin.net").unwrap();
