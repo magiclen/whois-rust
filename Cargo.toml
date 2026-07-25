@@ -23,7 +23,10 @@ tokio = { version = "1.21", features = ["fs", "net", "time", "io-util"], optiona
 validators = { version = "0.26", default-features = false, features = ["derive", "host"] }
 
 chardetng = { version = "1", optional = true }
-encoding_rs = { version = "0.8.29", optional = true }
+
+# Not `use`d directly. `chardetng` depends on `encoding_rs` with
+# `default-features = false`, but `Encoding::decode` is gated behind `alloc`.
+encoding_rs = { version = "0.8.29", optional = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 tokio = { version = "1.21", features = ["macros", "rt"] }
