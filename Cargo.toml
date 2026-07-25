@@ -1,6 +1,6 @@
 [package]
 name = "whois-rust"
-version = "3.0.0"
+version = "3.1.0"
 authors = ["Magic Len <len@magiclen.org>"]
 edition = "2024"
 rust-version = "1.89"
@@ -16,9 +16,9 @@ include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 serde_json = "1.0.45"
 regex = "1"
 
-hickory-client = { version = "0.24", optional = true }
+hickory-client = { version = "0.25", optional = true }
 
-tokio = { version = "1.21", features = ["fs", "net", "time", "io-util"], optional = true }
+tokio = { version = "1.29", features = ["fs", "net", "time", "io-util"], optional = true }
 
 validators = { version = "0.26", default-features = false, features = ["derive", "host"] }
 
@@ -29,7 +29,7 @@ chardetng = { version = "1", optional = true }
 encoding_rs = { version = "0.8.29", optional = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
-tokio = { version = "1.21", features = ["macros", "rt"] }
+tokio = { version = "1.29", features = ["macros", "rt"] }
 
 [features]
 default = ["charset"]
@@ -38,7 +38,8 @@ charset = ["dep:chardetng", "dep:encoding_rs"]
 
 tokio = ["dep:tokio"]
 
-srv = ["dep:hickory-client"]
+# `hickory-client` has been async-only since v0.25, so a runtime is needed to keep `can_find_server_for_tld` blocking.
+srv = ["dep:hickory-client", "dep:tokio"]
 
 [package.metadata.docs.rs]
 all-features = true

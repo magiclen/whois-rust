@@ -34,6 +34,18 @@ fn test_srv() {
     println!("{}", result);
 }
 
+#[cfg(all(feature = "srv", feature = "tokio"))]
+#[tokio::test]
+async fn test_srv_async() {
+    let mut who = WhoIs::from_host("whois.arin.net").unwrap();
+
+    assert!(who.can_find_server_for_tld_async(".lotteryusa.us", "8.8.8.8:53").await.unwrap());
+
+    let result =
+        who.lookup_async(WhoIsLookupOptions::from_string("lotteryusa.us").unwrap()).await.unwrap();
+    println!("{}", result);
+}
+
 #[cfg(feature = "tokio")]
 #[tokio::test]
 async fn test_async() {

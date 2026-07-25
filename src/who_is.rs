@@ -13,10 +13,12 @@ use std::{
 
 #[cfg(feature = "srv")]
 use hickory_client::{
-    client::{Client, SyncClient},
-    op::DnsResponse,
-    rr::{DNSClass, Name, RData, Record, RecordType},
-    udp::UdpClientConnection,
+    client::{Client, ClientHandle},
+    proto::{
+        rr::{DNSClass, Name, RData, RecordType},
+        runtime::TokioRuntimeProvider,
+        udp::UdpClientStream,
+    },
 };
 use regex::bytes::Regex;
 use serde_json::{Map, Value};
@@ -234,6 +236,66 @@ async fn connect_async(
     Err(last_error.unwrap_or_else(|| WhoIsError::IOError(no_address_error())))
 }
 
+/// Read the address of the DNS server to query the SRV records through.
+#[cfg(feature = "srv")]
+fn parse_dns_server(dns_server: &str) -> Result<SocketAddr, WhoIsError> {
+    dns_server
+        .parse()
+        .map_err(|_error| WhoIsError::MapError("The DNS server address is incorrect."))
+}
+
+/// Strip the leftmost label off a TLD/domain, giving `None` when there is nothing left to query.
+#[cfg(feature = "srv")]
+fn strip_label(tld: &str) -> Option<&str> {
+    let parent = &tld[tld.find('.')? + 1..];
+
+    if parent.is_empty() { None } else { Some(parent) }
+}
+
+/// Query the SRV records of a name through a DNS server, returning the target of every answer.
+#[cfg(feature = "srv")]
+async fn query_srv_targets_async(
+    dns_server: SocketAddr,
+    name: Name,
+) -> Result<Vec<String>, WhoIsError> {
+    let stream = UdpClientStream::builder(dns_server, TokioRuntimeProvider::new()).build();
+
+    let (mut client, background) = Client::connect(stream).await.map_err(io::Error::other)?;
+
+    // The connection is driven by this task, so the query cannot make any progress without it.
+    let background = tokio::spawn(background);
+
+    let response = client.query(name, DNSClass::IN, RecordType::SRV).await;
+
+    background.abort();
+
+    let response = response.map_err(io::Error::other)?;
+
+    Ok(response
+        .answers()
+        .iter()
+        .filter_map(|record| match record.data() {
+            RData::SRV(srv) => Some(srv.target().to_string()),
+            _ => None,
+        })
+        .collect())
+}
+
+/// Query the SRV records of a name through a DNS server, returning the target of every answer. `hickory-client` is async only, so the query is run on a thread of its own with a runtime of its own, which keeps this usable from inside an async runtime as well.
+#[cfg(feature = "srv")]
+fn query_srv_targets(dns_server: SocketAddr, name: Name) -> Result<Vec<String>, WhoIsError> {
+    let thread = std::thread::spawn(move || -> Result<Vec<String>, WhoIsError> {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+
+        runtime.block_on(query_srv_targets_async(dns_server, name))
+    });
+
+    match thread.join() {
+        Ok(targets) => targets,
+        Err(error) => std::panic::resume_unwind(error),
+    }
+}
+
 /// Read a whole WHOIS response, failing instead of truncating when it is bigger than the given limit. The caller bounds the time this takes by awaiting it with a timeout.
 #[cfg(feature = "tokio")]
 async fn read_response_async(
@@ -355,44 +417,46 @@ impl WhoIs {
 
 #[cfg(feature = "srv")]
 impl WhoIs {
+    /// Cache the first target which is a valid host as the server of a TLD. Returns whether one of them was.
+    fn cache_first_server(&mut self, tld: &str, targets: Vec<String>) -> bool {
+        for target in targets {
+            let Ok(new_server) = WhoIsServerValue::from_string(target.trim_end_matches('.')) else {
+                continue;
+            };
+
+            self.map.insert(tld.to_string(), new_server);
+
+            return true;
+        }
+
+        false
+    }
+
     /// Try to find a WHOIS server for a TLD by querying the `_nicname._tcp.<tld>` SRV records through the given DNS server, caching any server that is found for later lookups. Returns whether a server is available for the TLD (already known or newly discovered).
     ///
     /// One label is stripped off before each query, so pass `".example.com"` to have `example.com` itself queried. A TLD which is already in the server list is never replaced by a discovered one.
+    ///
+    /// This method blocks. It may be called from inside an async runtime, but `can_find_server_for_tld_async` (which needs the `tokio` feature) is the one to use there.
     pub fn can_find_server_for_tld<T: AsRef<str>, D: AsRef<str>>(
         &mut self,
         tld: T,
         dns_server: D,
     ) -> Result<bool, WhoIsError> {
         let mut tld = tld.as_ref();
-        let dns_server = dns_server.as_ref();
 
         // The TLD as given may already be known, in which case nothing else has to be set up.
         if self.map.contains_key(tld) {
             return Ok(true);
         }
 
-        let address = match dns_server.parse() {
-            Ok(address) => address,
-            Err(_error) => {
-                return Err(WhoIsError::MapError("The DNS server address is incorrect."));
-            },
-        };
-        let conn = UdpClientConnection::new(address).map_err(io::Error::other)?;
-        let client = SyncClient::new(conn);
+        let address = parse_dns_server(dns_server.as_ref())?;
 
         loop {
-            match tld.find('.') {
-                Some(index) => {
-                    tld = &tld[index + 1..];
-                },
-                None => {
-                    return Ok(false);
-                },
-            }
-
-            if tld.is_empty() {
+            let Some(parent) = strip_label(tld) else {
                 return Ok(false);
-            }
+            };
+
+            tld = parent;
 
             // The parent is checked before it is queried, so a known server is never queried for nor overwritten.
             if self.map.contains_key(tld) {
@@ -401,23 +465,50 @@ impl WhoIs {
 
             let name =
                 Name::from_str(&format!("_nicname._tcp.{tld}.")).map_err(io::Error::other)?;
-            let response: DnsResponse =
-                client.query(&name, DNSClass::IN, RecordType::SRV).map_err(io::Error::other)?;
-            let answers: &[Record] = response.answers();
 
-            for record in answers {
-                if let Some(RData::SRV(record)) = record.data() {
-                    let target = record.target().to_string();
-                    let new_server =
-                        match WhoIsServerValue::from_string(target.trim_end_matches('.')) {
-                            Ok(new_server) => new_server,
-                            Err(_error) => continue,
-                        };
+            if self.cache_first_server(tld, query_srv_targets(address, name)?) {
+                return Ok(true);
+            }
+        }
+    }
+}
 
-                    self.map.insert(tld.to_string(), new_server);
+#[cfg(all(feature = "srv", feature = "tokio"))]
+impl WhoIs {
+    /// Try to find a WHOIS server for a TLD by querying the `_nicname._tcp.<tld>` SRV records through the given DNS server, caching any server that is found for later lookups. Returns whether a server is available for the TLD (already known or newly discovered).
+    ///
+    /// One label is stripped off before each query, so pass `".example.com"` to have `example.com` itself queried. A TLD which is already in the server list is never replaced by a discovered one.
+    pub async fn can_find_server_for_tld_async<T: AsRef<str>, D: AsRef<str>>(
+        &mut self,
+        tld: T,
+        dns_server: D,
+    ) -> Result<bool, WhoIsError> {
+        let mut tld = tld.as_ref();
 
-                    return Ok(true);
-                }
+        // The TLD as given may already be known, in which case nothing else has to be set up.
+        if self.map.contains_key(tld) {
+            return Ok(true);
+        }
+
+        let address = parse_dns_server(dns_server.as_ref())?;
+
+        loop {
+            let Some(parent) = strip_label(tld) else {
+                return Ok(false);
+            };
+
+            tld = parent;
+
+            // The parent is checked before it is queried, so a known server is never queried for nor overwritten.
+            if self.map.contains_key(tld) {
+                return Ok(true);
+            }
+
+            let name =
+                Name::from_str(&format!("_nicname._tcp.{tld}.")).map_err(io::Error::other)?;
+
+            if self.cache_first_server(tld, query_srv_targets_async(address, name).await?) {
+                return Ok(true);
             }
         }
     }

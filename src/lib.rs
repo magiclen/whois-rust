@@ -68,6 +68,8 @@ version = "*"
 features = ["srv"]
 ```
 
+The `can_find_server_for_tld_async` function is available when the `tokio` feature is enabled as well. The blocking `can_find_server_for_tld` method runs its DNS query on a thread of its own, so it works from inside an async runtime too, but the async function is the one to use there.
+
 ## Testing
 
 ```bash
