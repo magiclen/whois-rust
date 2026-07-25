@@ -71,9 +71,9 @@ features = ["srv"]
 ## Testing
 
 ```bash
-# git clone --recurse-submodules git://github.com/magiclen/whois-rust.git
+# git clone --recurse-submodules https://github.com/magiclen/whois-rust.git
 
-git clone git://github.com/magiclen/whois-rust.git
+git clone https://github.com/magiclen/whois-rust.git
 
 cd whois-rust
 
